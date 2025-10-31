@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Laser Chase Game</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      font-family: sans-serif;
+    }
+    #gameArea {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      background-color: #f0f0f0;
+      overflow: hidden;
+    }
+    .block {
+      position: absolute;
+      width: 50px;
+      height: 50px;
+    }
+    #player {
+      z-index: 2;
+    }
+    .chaser {
+      background-color: red;
+      z-index: 1;
+    }
+    .laser {
+      position: absolute;
+      width: 10px;
+      height: 10px;
+      background-color: green;
+      z-index: 3;
+    }
+    #gameOver {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background-color: rgba(0,0,0,0.8);
+      color: white;
+      font-size: 32px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      z-index: 10;
+      display: none;
+    }
+    #retryBtn {
+      margin-top: 20px;
+      padding: 10px 20px;
+      font-size: 20px;
+      cursor: pointer;
+    }
+    #skinChooser {
+      position: absolute;
+      top: 30%;
+      left: 50%;
+      transform: translate(-50%, -30%);
+      background: white;
+      padding: 20px;
+      border: 2px solid #ccc;
+      z-index: 11;
+      text-align: center;
+    }
+    #skinChooser button {
+      margin: 5px;
+      padding: 10px 20px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    #timer {
+      position: absolute;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 24px;
+      font-weight: bold;
+      z-index: 5;
+    }
+  </style>
+</head>
+<body>
+  <div id="gameArea">
+    <div id="skinChooser">
+      <h3>Choose Your Skin</h3>
+      <button onclick="selectSkin('blue')">Blue</button>
+      <button onclick="selectSkin('green')">Green</button>
+      <button onclick="selectSkin('purple')">Purple</button>
+    </div>
+    <div id="timer">Time: 0s</div>
+    <div id="player" class="block"></div>
+    <div id="gameOver"></div>
+  </div>
+
+  <script>
+    const gameArea = document.getElementById("gameArea");
+    const player = document.getElementById("player");
+    const gameOver = document.getElementById("gameOver");
+    const skinChooser = document.getElementById("skinChooser");
+    const timerDisplay = document.getElementById("timer");
+
+    let username = prompt("Enter your username:");
+    let startTime;
+    let leaderboard = JSON.parse(localStorage.getItem("leaderboard")) || [];
+
+    let playerX = 100, playerY = 100;
+    const playerSpeed = 3;
+    const keys = { ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false };
+    const chasers = [];
+    const lasers = [];
+    let gameRunning = false;
+
+    let lastTeleportTime = 0;
+    const teleportCooldown = 10000; // 10 seconds
+
+    document.addEventListener("keydown", e => {
+      if (keys.hasOwnProperty(e.key)) keys[e.key] = true;
+    });
+    document.addEventListener("keyup", e => {
+      if (keys.hasOwnProperty(e.key)) keys[e.key] = false;
+    });
+
+    gameArea.addEventListener("click", e => {
+      if (!gameRunning) return;
+      const now = Date.now();
+      if (now - lastTeleportTime >= teleportCooldown) {
+        playerX = e.clientX - 25;
+        playerY = e.clientY - 25;
+        lastTeleportTime = now;
+      }
+    });
+
+    function selectSkin(color) {
+      player.style.backgroundColor = color;
+      skinChooser.style.display = "none";
+      startGame();
+    }
+
+    function startGame() {
+      gameRunning = true;
+      startTime = Date.now();
+      updatePlayer();
+      gameLoop();
+      spawnChaser();
+      setInterval(spawnChaser, 2000);
+      setInterval(updateTimer, 1000);
+    }
+
+    function updateTimer() {
+      if (!gameRunning) return;
+      const elapsed = Math.floor((Date.now() - startTime) / 1000);
+      timerDisplay.textContent = `Time: ${elapsed}s`;
+    }
+
+    function updatePlayer() {
+      player.style.left = playerX + "px";
+      player.style.top = playerY + "px";
+    }
+
+    function movePlayer() {
+      if (!gameRunning) return;
+      const maxX = window.innerWidth - 50;
+      const maxY = window.innerHeight - 50;
+      if (keys.ArrowUp && playerY > 0) playerY -= playerSpeed;
+      if (keys.ArrowDown && playerY < maxY) playerY += playerSpeed;
+      if (keys.ArrowLeft && playerX > 0) playerX -= playerSpeed;
+      if (keys.ArrowRight && playerX < maxX) playerX += playerSpeed;
+    }
+
+    function spawnChaser() {
+      const chaser = document.createElement("div");
+      chaser.classList.add("block", "chaser");
+      chaser.style.left = Math.random() * (window.innerWidth - 50) + "px";
+      chaser.style.top = Math.random() * (window.innerHeight - 50) + "px";
+      gameArea.appendChild(chaser);
+      const chaserObj = {
+        el: chaser,
+        x: parseInt(chaser.style.left),
+        y: parseInt(chaser.style.top),
+        active: true
+      };
+      chasers.push(chaserObj);
+      setTimeout(() => fireLaser(chaserObj), 1000);
+    }
+
+    function fireLaser(chaser) {
+      if (!gameRunning || !chaser.active) return;
+      const laser = document.createElement("div");
+      laser.classList.add("laser");
+      laser.style.left = chaser.x + 20 + "px";
+      laser.style.top = chaser.y + 20 + "px";
+      gameArea.appendChild(laser);
+      const dx = playerX - chaser.x;
+      const dy = playerY - chaser.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const vx = (dx / dist) * 5;
+      const vy = (dy / dist) * 5;
+      lasers.push({ el: laser, x: chaser.x + 20, y: chaser.y + 20, vx, vy });
+    }
+
+    function moveLasers() {
+      lasers.forEach((laser, index) => {
+        laser.x += laser.vx;
+        laser.y += laser.vy;
+        laser.el.style.left = laser.x + "px";
+        laser.el.style.top = laser.y + "px";
+        if (
+          laser.x > playerX &&
+          laser.x < playerX + 50 &&
+          laser.y > playerY &&
+          laser.y < playerY + 50
+        ) endGame();
+        if (
+          laser.x < 0 || laser.x > window.innerWidth ||
+          laser.y < 0 || laser.y > window.innerHeight
+        ) {
+          laser.el.remove();
+          lasers.splice(index, 1);
+        }
+      });
+    }
+
+    function moveChasers() {
+      chasers.forEach(chaser => {
+        if (!chaser.active || !gameRunning) return;
+        const dx = playerX - chaser.x;
+        const dy = playerY - chaser.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist > 1) {
+          chaser.x += (dx / dist) * 2;
+          chaser.y += (dy / dist) * 2;
+        }
+        chaser.el.style.left = chaser.x + "px";
+        chaser.el.style.top = chaser.y + "px";
+        if (
+          playerX < chaser.x + 50 &&
+          playerX + 50 > chaser.x &&
+          playerY < chaser.y + 50 &&
+          playerY + 50 > chaser.y
+        ) {
+          endGame();
+        }
+      });
+    }
+
+    function endGame() {
+      gameRunning = false;
+      player.style.display = "none";
+      const score = Math.floor((Date.now() - startTime) / 1000);
+      leaderboard.push({ name: username, score });
+      leaderboard.sort((a, b) => b.score - a.score);
+      leaderboard = leaderboard.slice(0, 5);
+      localStorage.setItem("leaderboard", JSON.stringify(leaderboard));
+
+      const boardHTML = leaderboard
+        .map((entry, i) => `<div>${i + 1}. ${entry.name} - ${entry.score}s</div>`)
+        .join("");
+
+      gameOver.innerHTML = `
+        <div>Game Over</div>
+        <div>Your score: ${score}s</div>
+        <h3>Leaderboard</h3>
+        ${boardHTML}
+        <button id="retryBtn">Retry</button>
+      `;
+
+      document.getElementById("retryBtn").onclick = () => location.reload();
+      gameOver.style.display = "flex";
+    }
+
+    function gameLoop() {
+      movePlayer();
+      moveChasers();
+      moveLasers();
+      updatePlayer();
+      if (gameRunning) requestAnimationFrame(gameLoop);
+    }
+  </script>
+</body>
+</html>
